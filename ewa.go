@@ -2,6 +2,7 @@ package ewa
 
 import (
 	"errors"
+	"runtime"
 	"sort"
 
 	"golang.org/x/exp/maps"
@@ -25,9 +26,45 @@ func (e *errorWithAttrs) Attrs() []slog.Attr {
 	return e.attrs
 }
 
+type Stacktracer interface {
+	StackTrace() string
+}
+
+type errorWithAttrsAndStackTrace struct {
+	errorWithAttrs
+	stack []uintptr
+}
+
+func (e *errorWithAttrsAndStackTrace) StackTrace() string {
+	return stackAsString(e.stack)
+}
+
+func stackAsString(stack []uintptr) string {
+	var result string
+
+	frames := runtime.CallersFrames(stack)
+	for {
+		frame, more := frames.Next()
+		result += frame.Func.Name() + "\n"
+		if !more {
+			break
+		}
+	}
+	return result
+}
+
 type errorWithAttrsAndParent struct {
 	errorWithAttrs
 	err error
+}
+
+type errorWithAttrsAndParentStackTrace struct {
+	errorWithAttrsAndParent
+	stack []uintptr
+}
+
+func (e *errorWithAttrsAndParentStackTrace) StackTrace() string {
+	return stackAsString(e.stack)
 }
 
 func (e *errorWithAttrsAndParent) Error() string {
@@ -39,13 +76,34 @@ func (e *errorWithAttrsAndParent) Unwrap() error {
 }
 
 func WrapAttrs(err error, text string, attrs ...slog.Attr) error {
-	return &errorWithAttrsAndParent{
+	attrParent := errorWithAttrsAndParent{
 		errorWithAttrs: errorWithAttrs{
 			msg:   text,
 			attrs: attrs,
 		},
 		err: err,
 	}
+
+	hasStacktrace := isStacktracer(err)
+	if hasStacktrace {
+		return &attrParent
+	}
+
+	return &errorWithAttrsAndParentStackTrace{
+		errorWithAttrsAndParent: attrParent,
+		stack:                   callers(),
+	}
+}
+
+func isStacktracer(err error) bool {
+	if _, ok := err.(Stacktracer); ok {
+		return true
+	}
+	parent := errors.Unwrap(err)
+	if parent != nil {
+		return isStacktracer(parent)
+	}
+	return false
 }
 
 func Wrap(err error, text string, args ...any) error {
@@ -53,16 +111,29 @@ func Wrap(err error, text string, args ...any) error {
 	return WrapAttrs(err, text, attrs...)
 }
 
-func NewAttrs(text string, attrs ...slog.Attr) error {
-	return &errorWithAttrs{
-		msg:   text,
-		attrs: attrs,
+func newAttrs(text string, callers []uintptr, attrs ...slog.Attr) error {
+	return &errorWithAttrsAndStackTrace{
+		errorWithAttrs: errorWithAttrs{
+			msg:   text,
+			attrs: attrs,
+		},
+		stack: callers,
 	}
+}
+
+func NewAttrs(text string, attrs ...slog.Attr) error {
+	return newAttrs(text, callers(), attrs...)
 }
 
 func New(text string, args ...any) error {
 	attrs := argsToAttrs(args)
-	return NewAttrs(text, attrs...)
+	return newAttrs(text, callers(), attrs...)
+}
+
+func callers() []uintptr {
+	stack := make([]uintptr, 42)
+	_ = runtime.Callers(3, stack)
+	return stack
 }
 
 // I'm lazy, for this poc reuse slog's Attr impl
@@ -86,7 +157,6 @@ func LogInfo(err error, logger *slog.Logger) {
 
 func getAttrs(err error) (string, []slog.Attr, bool) {
 	// build list of attrs from err, if there are duplicate keys, then the one deepest in the chain wins
-	// TODO: stacktrace as attrs?
 	// TODO: alternative key.# to make sure all are logged?
 	if err == nil {
 		return "", nil, false
@@ -101,6 +171,12 @@ func getAttrs(err error) (string, []slog.Attr, bool) {
 				keyToAttr[attr.Key] = attr
 			}
 		}
+
+		if stacktracer, ok := err.(Stacktracer); ok {
+			a := slog.String("stacktrace", stacktracer.StackTrace())
+			keyToAttr[a.Key] = a
+		}
+
 		err = errors.Unwrap(err)
 		if err == nil {
 			break

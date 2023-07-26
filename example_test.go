@@ -41,8 +41,8 @@ func ExampleUsage() {
 	ewa.LogInfo(ewa4, slog.Default())
 
 	// Output:
-	// level=INFO msg="wrap test error: test error" key=value key2=2 key3=value3
-	// level=INFO msg="wrap test error 2: test error 2" key=value key2=2 key3=value3
+	// level=INFO msg="wrap test error: test error" key=value key2=2 key3=value3 stacktrace="github.com/john7doe/go-ewa_test.ExampleUsage\ntesting.runExample\ntesting.runExamples\ntesting.(*M).Run\nmain.main\nruntime.main\nruntime.goexit\n"
+	// level=INFO msg="wrap test error 2: test error 2" key=value key2=2 key3=value3 stacktrace="github.com/john7doe/go-ewa_test.ExampleUsage\ntesting.runExample\ntesting.runExamples\ntesting.(*M).Run\nmain.main\nruntime.main\nruntime.goexit\n"
 }
 
 func ExampleReadme() {
@@ -50,16 +50,27 @@ func ExampleReadme() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{ReplaceAttr: removeTime}))
 	slog.SetDefault(logger)
 
-	errorFromYourCode := fmt.Errorf("timeout while calling %s", "/bar")
+	errorFromYourCode := simTimeout()
 	wrappedError := fmt.Errorf("error getting response from service (%s): %w", "some service", errorFromYourCode)
 	log.Print(wrappedError)
 
-	ewaFromYourCode := ewa.New("timeout while calling", "url", "/bar")
+	ewaFromYourCode := simTimeoutEwa()
 	ewaWrappedError := ewa.Wrap(ewaFromYourCode, "error getting response from service", "serviceName", "some service")
 
 	ewa.LogInfo(ewaWrappedError, slog.Default())
+
 	// Output:
 	// level=INFO msg="error getting response from service (some service): timeout while calling /bar"
-	// level=INFO msg="error getting response from service: timeout while calling" serviceName="some service" url=/bar
+	// level=INFO msg="error getting response from service: timeout while calling" serviceName="some service" stacktrace="github.com/john7doe/go-ewa_test.simTimeoutEwa\ngithub.com/john7doe/go-ewa_test.ExampleReadme\ntesting.runExample\ntesting.runExamples\ntesting.(*M).Run\nmain.main\nruntime.main\nruntime.goexit\n" url=/bar
 
+}
+
+//go:noinline
+func simTimeoutEwa() error {
+	return ewa.New("timeout while calling", "url", "/bar")
+}
+
+//go:noinline
+func simTimeout() error {
+	return fmt.Errorf("timeout while calling %s", "/bar")
 }

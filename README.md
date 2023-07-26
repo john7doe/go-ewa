@@ -1,5 +1,7 @@
 # E.W.A - Errors With Attributes
 
+![ewa.png](ewa.png)
+
 ## What is E.W.A?
 
 E.W.A is a package that provides a way to add attributes to errors. So when they are logged they 
@@ -22,7 +24,7 @@ that produces log lines like this:
 
 `level=INFO msg="error getting response from service (some service): timeout while calling /bar"`
 
-or trying to retrofit structured logging in
+or trying to retrofit structured logging in while trying to be DRY:
 
 ```go
 ...
@@ -31,9 +33,6 @@ slog.Error(err.Error(),  "serviceName", "some service")
 return nil, err
 ...
 ```
-
-"So you get a stack of duplicate lines in your log file, but at the top of the program you get the original error without any context. Java anyone?"
-
 
 you can use E.W.A:
 
@@ -46,20 +45,10 @@ return nil, ewa.Wrap(ewaFromYourCode, "error getting response from service", "se
 that produces log lines like this:
 
 ```log
-level=ERROR msg="error getting response from service: timeout while calling" serviceName="some service" url=/bar
+level=INFO msg="error getting response from service: timeout while calling" serviceName="some service" stacktrace="github.com/john7doe/go-ewa_test.simTimeoutEwa\ngithub.com/john7doe/go-ewa_test.ExampleReadme\ntesting.runExample\ntesting.runExamples\ntesting.(*M).Run\nmain.main\nruntime.main\nruntime.goexit\n" url=/bar
 ```
-
-## TODO
-
-is stacktraces orthogonal to ewa? should it be a separate package? :shug:
-
-if not, then:
-option to add stacktrace to error
-  * only add if not already present
-  * only add if statement outside the "natural stack trace"
-
 
 ## Inspiration
 
-https://dave.cheney.net/2016/04/27/dont-just-check-errors-handle-them-gracefully (the quote above is from the "Only handle errors once" section)
-https://dave.cheney.net/2016/06/12/stack-traces-and-the-errors-package
+* https://dave.cheney.net/2016/04/27/dont-just-check-errors-handle-them-gracefully (in particular the "Only handle errors once" section)
+* https://dave.cheney.net/2016/06/12/stack-traces-and-the-errors-package
