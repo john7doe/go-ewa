@@ -9,13 +9,6 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-func removeTime(groups []string, a slog.Attr) slog.Attr {
-	if a.Key == slog.TimeKey && len(groups) == 0 {
-		return slog.Attr{}
-	}
-	return a
-}
-
 /*
 Common patterns that we expect folks to convert from, so should we mimic them in the api we provide
 
@@ -73,4 +66,11 @@ func simTimeoutEwa() error {
 //go:noinline
 func simTimeout() error {
 	return fmt.Errorf("timeout while calling %s", "/bar")
+}
+
+func removeTime(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == slog.TimeKey && len(groups) == 0 {
+		return slog.Attr{}
+	}
+	return a
 }

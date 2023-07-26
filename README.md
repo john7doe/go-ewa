@@ -1,4 +1,4 @@
-# E.W.A - Errors With Attributes
+# E.W.A - Errors With Attributes (and stacktrace)
 
 ![ewa.png](ewa.png)
 

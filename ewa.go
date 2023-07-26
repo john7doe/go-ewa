@@ -172,6 +172,7 @@ func getAttrs(err error) (string, []slog.Attr, bool) {
 			}
 		}
 
+		// TODO: only call StackTrace() on the one we want to keep
 		if stacktracer, ok := err.(Stacktracer); ok {
 			a := slog.String("stacktrace", stacktracer.StackTrace())
 			keyToAttr[a.Key] = a
