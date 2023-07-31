@@ -2,8 +2,10 @@ package ewa
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"sort"
+	"strings"
 
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slog"
@@ -30,6 +32,11 @@ type Stacktracer interface {
 	StackTrace() string
 }
 
+func isStacktracer(err error) bool {
+	var st Stacktracer
+	return errors.As(err, &st)
+}
+
 type errorWithAttrsAndStackTrace struct {
 	errorWithAttrs
 	stack []uintptr
@@ -40,17 +47,17 @@ func (e *errorWithAttrsAndStackTrace) StackTrace() string {
 }
 
 func stackAsString(stack []uintptr) string {
-	var result string
 
 	frames := runtime.CallersFrames(stack)
+	var result = strings.Builder{}
 	for {
 		frame, more := frames.Next()
-		result += frame.Func.Name() + "\n"
+		_, _ = fmt.Fprintf(&result, "%s\n", frame.Function)
 		if !more {
 			break
 		}
 	}
-	return result
+	return result.String()
 }
 
 type errorWithAttrsAndParent struct {
@@ -75,7 +82,17 @@ func (e *errorWithAttrsAndParent) Unwrap() error {
 	return e.err
 }
 
+func WrapAttrsS(err error, text string, attrs ...slog.Attr) error {
+	return wrapAttrs(err, text, true, attrs...)
+
+}
+
 func WrapAttrs(err error, text string, attrs ...slog.Attr) error {
+	return wrapAttrs(err, text, false, attrs...)
+
+}
+
+func wrapAttrs(err error, text string, stacktrace bool, attrs ...slog.Attr) error {
 	attrParent := errorWithAttrsAndParent{
 		errorWithAttrs: errorWithAttrs{
 			msg:   text,
@@ -84,8 +101,8 @@ func WrapAttrs(err error, text string, attrs ...slog.Attr) error {
 		err: err,
 	}
 
-	hasStacktrace := isStacktracer(err)
-	if hasStacktrace {
+	// don't add stacktrace if not requested or if the error chain already has a stacktrace
+	if !stacktrace || isStacktracer(err) {
 		return &attrParent
 	}
 
@@ -95,23 +112,17 @@ func WrapAttrs(err error, text string, attrs ...slog.Attr) error {
 	}
 }
 
-func isStacktracer(err error) bool {
-	if _, ok := err.(Stacktracer); ok {
-		return true
-	}
-	parent := errors.Unwrap(err)
-	if parent != nil {
-		return isStacktracer(parent)
-	}
-	return false
-}
-
 func Wrap(err error, text string, args ...any) error {
 	attrs := argsToAttrs(args)
 	return WrapAttrs(err, text, attrs...)
 }
 
-func newAttrs(text string, callers []uintptr, attrs ...slog.Attr) error {
+func WrapS(err error, text string, args ...any) error {
+	attrs := argsToAttrs(args)
+	return WrapAttrsS(err, text, attrs...)
+}
+
+func newAttrsS(text string, callers []uintptr, attrs ...slog.Attr) error {
 	return &errorWithAttrsAndStackTrace{
 		errorWithAttrs: errorWithAttrs{
 			msg:   text,
@@ -121,13 +132,25 @@ func newAttrs(text string, callers []uintptr, attrs ...slog.Attr) error {
 	}
 }
 
+func NewAttrsS(text string, attrs ...slog.Attr) error {
+	return newAttrsS(text, callers(), attrs...)
+}
+
+func NewS(text string, args ...any) error {
+	attrs := argsToAttrs(args)
+	return newAttrsS(text, callers(), attrs...)
+}
+
 func NewAttrs(text string, attrs ...slog.Attr) error {
-	return newAttrs(text, callers(), attrs...)
+	return &errorWithAttrs{
+		msg:   text,
+		attrs: attrs,
+	}
 }
 
 func New(text string, args ...any) error {
 	attrs := argsToAttrs(args)
-	return newAttrs(text, callers(), attrs...)
+	return NewAttrs(text, attrs...)
 }
 
 func callers() []uintptr {
@@ -165,6 +188,7 @@ func getAttrs(err error) (string, []slog.Attr, bool) {
 	message := err.Error()
 
 	keyToAttr := make(map[string]slog.Attr)
+	var deepestStackstace Stacktracer
 	for {
 		if errWithAttrs, ok := err.(Attrser); ok {
 			for _, attr := range errWithAttrs.Attrs() {
@@ -172,16 +196,21 @@ func getAttrs(err error) (string, []slog.Attr, bool) {
 			}
 		}
 
-		// TODO: only call StackTrace() on the one we want to keep
+		// Keep the deepest stacktrace
 		if stacktracer, ok := err.(Stacktracer); ok {
-			a := slog.String("stacktrace", stacktracer.StackTrace())
-			keyToAttr[a.Key] = a
+			deepestStackstace = stacktracer
 		}
 
 		err = errors.Unwrap(err)
 		if err == nil {
 			break
 		}
+	}
+
+	// Add stacktrace if there is one
+	if deepestStackstace != nil {
+		a := slog.String("stacktrace", deepestStackstace.StackTrace())
+		keyToAttr[a.Key] = a
 	}
 
 	if len(keyToAttr) == 0 {
