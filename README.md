@@ -5,7 +5,7 @@
 ## What is E.W.A?
 
 E.W.A is a package that provides a way to add attributes to errors. So when they are logged they 
-reassemble the structured logging your application is already using.
+reassemble the structured logging your application is already using. Eliminating the need 
 
 ## Why E.W.A?
 
@@ -15,37 +15,31 @@ and the logged errors are not as easy searchable as you would like them to be.
 instead of this:
 
 ```go
-...
-return nil, fmt.Errorf("error getting response from service (%s): %w", "some service", errorFromYourCode)
-...
+return fmt.Errorf("error getting response from service (%s): %w", "my service", errorFromYourCode)
 ```
 
 that produces log lines like this:
 
-`level=INFO msg="error getting response from service (some service): timeout while calling /bar"`
+`level=INFO msg="error getting response from service (my service): timeout while calling /bar"`
 
 or trying to retrofit structured logging in while trying to be DRY:
 
 ```go
-...
-err := fmt.Errorf("error getting response from service (%s): %w", "some service", errorFromYourCode)
-slog.Error(err.Error(),  "serviceName", "some service")
-return nil, err
-...
+err := fmt.Errorf("error getting response from service (%s): %w", "my service", errorFromYourCode)
+slog.Error(err.Error(),  "serviceName", "my service")
+return err
 ```
 
 you can use E.W.A:
 
 ```go
-...
-return nil, ewa.Wrap(ewaFromYourCode, "error getting response from service", "serviceName", "some service")
-...
+return ewa.Wrap(err, "error getting response from service", "serviceName", "some service")
 ```
 
 that produces log lines like this:
 
 ```log
-level=INFO msg="error getting response from service: timeout while calling" serviceName="some service" stacktrace="github.com/john7doe/go-ewa_test.simTimeoutEwa\ngithub.com/john7doe/go-ewa_test.ExampleReadme\ntesting.runExample\ntesting.runExamples\ntesting.(*M).Run\nmain.main\nruntime.main\nruntime.goexit\n" url=/bar
+level=INFO msg="error getting response from service: timeout while calling" serviceName="my service" stacktrace="github.com/john7doe/go-ewa_test.simTimeoutEwa\ngithub.com/john7doe/go-ewa_test.ExampleReadme\ntesting.runExample\ntesting.runExamples\ntesting.(*M).Run\nmain.main\nruntime.main\nruntime.goexit\n" url=/bar
 ```
 
 ## Inspiration
