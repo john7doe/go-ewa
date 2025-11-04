@@ -5,7 +5,7 @@
 ## What is E.W.A?
 
 E.W.A is a package that provides a way to add attributes to errors. So when they are logged they 
-reassemble the structured logging your application is already using. Eliminating the need 
+reassemble the structured logging your application is already using.
 
 ## Why E.W.A?
 
